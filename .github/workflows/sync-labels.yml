@@ -1,0 +1,72 @@
+name: Sync GitHub Labels
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - .github/labels.json
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync-labels:
+    name: Sync labels.json
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const desiredLabels = JSON.parse(fs.readFileSync('.github/labels.json', 'utf8'));
+            const desiredByName = new Map(desiredLabels.map((label) => [label.name, label]));
+            const existingLabels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            for (const label of desiredLabels) {
+              const existing = existingLabels.find((item) => item.name === label.name);
+              const color = label.color.replace(/^#/, '');
+              const description = label.description || '';
+
+              if (existing) {
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  new_name: label.name,
+                  color,
+                  description,
+                });
+              } else {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color,
+                  description,
+                });
+              }
+            }
+
+            for (const label of existingLabels) {
+              if (!desiredByName.has(label.name)) {
+                await github.rest.issues.deleteLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+              }
+            }
