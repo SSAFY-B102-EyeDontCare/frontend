@@ -1,0 +1,40 @@
+name: Sync merged PR to GitLab
+
+on:
+  pull_request_target:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-gitlab:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger GitLab pipeline
+        env:
+          GITLAB_API: https://lab.ssafy.com/api/v4
+          GITLAB_PROJECT_ID: ${{ vars.GITLAB_PARENT_PROJECT_ID }}
+          GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_PARENT_TRIGGER_TOKEN }}
+
+          SUBTREE_PREFIX: ${{ vars.SUBTREE_PREFIX }}
+          SOURCE_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
+        run: |
+          set -euo pipefail
+
+          curl --fail-with-body --request POST \
+            --form-string "token=${GITLAB_TRIGGER_TOKEN}" \
+            --form-string "ref=main" \
+            --form-string "variables[SUBTREE_PREFIX]=${SUBTREE_PREFIX}" \
+            --form-string "variables[SOURCE_REPO]=${SOURCE_REPO}" \
+            --form-string "variables[SOURCE_SHA]=${SOURCE_SHA}" \
+            --form-string "variables[SUBTREE_COMMIT_MESSAGE]=${PR_TITLE}" \
+            "${GITLAB_API}/projects/${GITLAB_PROJECT_ID}/trigger/pipeline"
